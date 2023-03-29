@@ -1,43 +1,57 @@
-"""Functions for predicting outcomes based on the estimated model."""
-
-import numpy as np
 import pandas as pd
+import numpy as np
+import statsmodels.api as sm
+import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
 
 
-def predict_prob_by_age(data, model, group):
-    """Predict smoking probability for varying age values.
 
-    For each group value in column data[group] we create new data that runs through a
-    grid of age values from data.age.min() to data.age.max() and fixes all column
-    values to the ones returned by data.mode(), except for the group column.
+def predict_eff(data):
+    """Fit a quadratic polynomial function of age to the household’s log hourly wage, by
+    education to predict the age-efficiency profile of US workers between 2014 and 2018."""
+    # Generate some sample data
+    X = data[['age','age2','col']]
+    y = data['lwage']
+    weights = data['hhwgt']
 
-    Args:
-        data (pandas.DataFrame): The data set.
-        model (statsmodels.base.model.Results): The fitted model.
-        group (str): Categorical column in data set. We create predictions for each
-            unique value in column data[group]. Cannot be 'age' or 'smoke'.
+    # Create a LinearRegression object and fit the model using the weighted data
+    lr = LinearRegression()
+    lr.fit(X, y, sample_weight=weights)
 
-    Returns:
-        pandas.DataFrame: Predictions. Has columns 'age' and one column for each
-            category in column group.
+    # Predict fitted values and residuals
+    data['lwage_fit'] = lr.predict(X)
 
-    """
-    age_min = data["age"].min()
-    age_max = data["age"].max()
-    age_grid = np.arange(age_min, age_max + 1)
+    data['resid'] = y - data['lwage_fit']
 
-    mode = data.mode()
+    # Generate new variable
+    data['wage_fit'] = np.exp(data['lwage_fit'])
 
-    new_data = pd.DataFrame(age_grid, columns=["age"])
+    # Compute average wage in sample
+    result = data['wage_fit'].mean()
 
-    cols_to_set = list(set(data.columns) - {group, "age", "smoke"})
-    new_data = new_data.assign(**dict(mode.loc[0, cols_to_set]))
+    # Normalize wages
+    data['wage_fit_norm'] = data['wage_fit'] / result
 
-    predicted = {"age": age_grid}
-    for group_value in data[group].unique():
-        _new_data = new_data.copy()
-        _new_data[group] = group_value
-        predicted[group_value] = model.predict(_new_data)
+    data = data.sort_values(['age', 'col'])
+    data = data.drop_duplicates(subset=['age', 'col'], keep='first')
 
-    predicted = pd.DataFrame(predicted)
-    return predicted
+    data = data[['age', 'wage_fit_norm', 'col']]
+    data = data.sort_values(['col', 'age'])
+    data = data.pivot(index='age', columns='col', values='wage_fit_norm')
+
+    """For the sake of simplicity, let us take the average between the two types of workers. 
+    Later on, we will, distinguish the two types of workers following the approach 
+    adopted by Conesa and Krueger (1999)."""
+    data['average_eff'] = (data[0] + data[1]) / 2
+
+    return data
+print('Age-efficiency estimated')
+
+def predict_eff_age(data):
+    """Function to plot the age-efficiency profile."""
+    #data = data.pivot(index=data[]'age', columns='col', values='wage_fit_norm')
+    plt.figure(1)
+    plt.plot(data.index, data['average_eff'])
+    plt.ylabel('Average efficiency')
+    plt.xlabel('Age')
+    return plt.figure(1)
