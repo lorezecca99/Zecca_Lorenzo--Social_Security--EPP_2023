@@ -1,47 +1,44 @@
-"""Tasks running the core analyses."""
+"""Task to obtain the estimated age-efficiency."""
 
 import pandas as pd
 import pytask
+import matplotlib.pyplot as plt
+import os
 
-from ss_us.analysis.model import fit_logit_model, load_model
-from ss_us.analysis.predict import predict_prob_by_age
-from ss_us.config import BLD, GROUPS, SRC
+from ss_us.analysis.predict import predict_eff
+from ss_us.analysis.predict import predict_eff_age
+from ss_us.config import BLD, SRC
 from ss_us.utilities import read_yaml
+
 
 
 @pytask.mark.depends_on(
     {
-        "scripts": ["model.py", "predict.py"],
-        "data": BLD / "python" / "data" / "data_clean.csv",
+        "scripts": ["predict.py"],
+        "data": BLD / "python" / "data" / "cleaned_data.csv",
         "data_info": SRC / "data_management" / "data_info.yaml",
     },
 )
-@pytask.mark.produces(BLD / "python" / "models" / "model.pickle")
-def task_fit_model_python(depends_on, produces):
+@pytask.mark.produces(BLD / "python" / "age_efficiency"/"age_eff.csv")
+def task_age_eff_csv_python(depends_on, produces):
     """Fit a logistic regression model (Python version)."""
-    data_info = read_yaml(depends_on["data_info"])
+    #data_info = read_yaml(depends_on["data_info"])
     data = pd.read_csv(depends_on["data"])
-    model = fit_logit_model(data, data_info, model_type="linear")
-    model.save(produces)
+    data = predict_eff(data)
+    data.to_csv(produces, index=False)
 
 
-for group in GROUPS:
-
-    kwargs = {
-        "group": group,
-        "produces": BLD / "python" / "predictions" / f"{group}.csv",
-    }
-
-    @pytask.mark.depends_on(
-        {
-            "data": BLD / "python" / "data" / "data_clean.csv",
-            "model": BLD / "python" / "models" / "model.pickle",
-        },
-    )
-    @pytask.mark.task(id=group, kwargs=kwargs)
-    def task_predict_python(depends_on, group, produces):
-        """Predict based on the model estimates (Python version)."""
-        model = load_model(depends_on["model"])
-        data = pd.read_csv(depends_on["data"])
-        predicted_prob = predict_prob_by_age(data, model, group)
-        predicted_prob.to_csv(produces, index=False)
+@pytask.mark.depends_on(
+    {
+        "scripts": ["predict.py"],
+        "data": BLD / "python" / "data" / "cleaned_data.csv",
+        "data_info": SRC / "data_management" / "data_info.yaml",
+    },
+)
+@pytask.mark.produces(BLD / "python" / "age_efficiency"/"eff_profiles_py.txt")
+def task_age_eff_txt_python(depends_on, produces):
+    """Fit a logistic regression model (Python version)."""
+    #data_info = read_yaml(depends_on["data_info"])
+    data = pd.read_csv(depends_on["data"])
+    data = predict_eff(data)
+    data[['average_eff']].to_csv(produces, sep=' ', header=False, index=False)
