@@ -1,36 +1,42 @@
-"""Function(s) for cleaning the data set(s)."""
-
-import pandas as pd
+import numpy as np
 
 
-def clean_data(data, data_info):
-    """Clean data set.
-
-    Information on data columns is stored in ``data_management/data_info.yaml``.
-
-    Args:
-        data (pandas.DataFrame): The data set.
-        data_info (dict): Information on data set stored in data_info.yaml. The
-            following keys can be accessed:
-            - 'outcome': Name of dependent variable column in data
-            - 'outcome_numerical': Name to be given to the numerical version of outcome
-            - 'columns_to_drop': Names of columns that are dropped in data cleaning step
-            - 'categorical_columns': Names of columns that are converted to categorical
-            - 'column_rename_mapping': Old and new names of columns to be renamend,
-                stored in a dictionary with design: {'old_name': 'new_name'}
-            - 'url': URL to data set
-
-    Returns:
-        pandas.DataFrame: The cleaned data set.
-
+def clean_data(data):
+    """Function for cleaning the data set. 
+    The sample includes household heads only, which can detected with
+    the variable “Relationship to household head” (hhrel2).
+    The household head is of working age that we define to be 20–64 years 
+    old, and works at least 260 hours annualy.
+    The total annual earnings of the head are strictly positive. 
+    Define total earnings as the sum of wage income from wage and 
+    salary and income from self-employment. The total annual earnings of the head are 
+    strictly positive, so we can also drop  households who report a 
+    zero number of weeks worked.
     """
-    data = data.drop(columns=data_info["columns_to_drop"])
-    data = data.dropna()
-    for cat_col in data_info["categorical_columns"]:
-        data[cat_col] = data[cat_col].astype("category")
-    data = data.rename(columns=data_info["column_rename_mapping"])
+    data = data[data['hhrel2']=="Householder"]
+    data = data[(data['age'] >= 20) & (data['age'] <= 64)]
+    data['hrs'] = data['uhours'] * data['weeks']
+    data = data[data['hrs'] >= 260]
+    data['rincp_wag'].replace({np.nan: 0}, inplace=True)
+    data['rincp_se'].replace({np.nan: 0}, inplace=True)
+    data['hh_earnings'] = data['rincp_wag'] + data['rincp_se']
+    data = data[data['hh_earnings'] > 0]
+    data = data[data['weeks'] != 0]
 
-    numerical_outcome = pd.Categorical(data[data_info["outcome"]]).codes
-    data[data_info["outcome_numerical"]] = numerical_outcome
+    """Generate a dummy variable col for the household’s educational 
+    level by assuming that a household head is a college graduate if 
+    he/she has a completed college degree or higher (col = 1); otherwise,
+    a household head is a high school graduate."""
 
+    data['col'] = data['educ'].apply(lambda x: 1 if x in ['Some college','College', 'Advanced'] else 0)
+
+    #  Compute the household head’s hourly wage by dividing total annual earning by theannual hours worked.
+
+    data['hourly_wage'] = data['hh_earnings'] / data['hrs']
+
+    data = data[['hourly_wage', 'hhwgt', 'age', 'col']]
+
+    data['lwage'] = np.log(data['hourly_wage'])
+    data['age2'] = data['age'].apply(lambda x: x**2)
     return data
+print('Data cleaned')
